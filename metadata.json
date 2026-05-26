@@ -1,0 +1,6 @@
+{
+  "name": "YT Music Player",
+  "description": "A YouTube Music player with AI curation, real-time search, dynamic playlists, synchronized lyrics, and full background playback support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
