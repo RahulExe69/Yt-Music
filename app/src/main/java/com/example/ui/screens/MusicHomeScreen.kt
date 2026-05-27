@@ -54,65 +54,67 @@ fun MusicHomeScreen(
 
     Scaffold(
         bottomBar = {
-            Column {
-                // Persistent Mini player bar if a song is loaded
-                if (currentSong != null) {
-                    MiniPlayerBar(
-                        song = currentSong!!,
-                        isPlaying = isPlaying,
-                        position = currentPosition,
-                        duration = duration,
-                        onTogglePlay = { viewModel.togglePlayPause() },
-                        onNext = { viewModel.playNext() },
-                        onClick = { showFullPlayer = true }
-                    )
-                }
+            if (!showFullPlayer) {
+                Column {
+                    // Persistent Mini player bar if a song is loaded
+                    if (currentSong != null) {
+                        MiniPlayerBar(
+                            song = currentSong!!,
+                            isPlaying = isPlaying,
+                            position = currentPosition,
+                            duration = duration,
+                            onTogglePlay = { viewModel.togglePlayPause() },
+                            onNext = { viewModel.playNext() },
+                            onClick = { showFullPlayer = true }
+                        )
+                    }
 
-                // Bottom Tab Navigation Bar
-                NavigationBar(
-                    containerColor = CharcoalDark,
-                    tonalElevation = 8.dp,
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
-                ) {
-                    NavigationBarItem(
-                        selected = currentScreen is ScreenState.Home,
-                        onClick = { viewModel.navigateTo(ScreenState.Home) },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.White,
-                            selectedTextColor = Color.White,
-                            indicatorColor = RedYTMVariant,
-                            unselectedIconColor = DarkGreyText,
-                            unselectedTextColor = DarkGreyText
+                    // Bottom Tab Navigation Bar
+                    NavigationBar(
+                        containerColor = CharcoalDark,
+                        tonalElevation = 8.dp,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                    ) {
+                        NavigationBarItem(
+                            selected = currentScreen is ScreenState.Home,
+                            onClick = { viewModel.navigateTo(ScreenState.Home) },
+                            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                            label = { Text("Home", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = Color.White,
+                                indicatorColor = RedYTMVariant,
+                                unselectedIconColor = DarkGreyText,
+                                unselectedTextColor = DarkGreyText
+                            )
                         )
-                    )
-                    NavigationBarItem(
-                        selected = currentScreen is ScreenState.Search,
-                        onClick = { viewModel.navigateTo(ScreenState.Search) },
-                        icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                        label = { Text("Search", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.White,
-                            selectedTextColor = Color.White,
-                            indicatorColor = RedYTMVariant,
-                            unselectedIconColor = DarkGreyText,
-                            unselectedTextColor = DarkGreyText
+                        NavigationBarItem(
+                            selected = currentScreen is ScreenState.Search,
+                            onClick = { viewModel.navigateTo(ScreenState.Search) },
+                            icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                            label = { Text("Search", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = Color.White,
+                                indicatorColor = RedYTMVariant,
+                                unselectedIconColor = DarkGreyText,
+                                unselectedTextColor = DarkGreyText
+                            )
                         )
-                    )
-                    NavigationBarItem(
-                        selected = currentScreen is ScreenState.Library,
-                        onClick = { viewModel.navigateTo(ScreenState.Library) },
-                        icon = { Icon(Icons.Default.List, contentDescription = "Library") },
-                        label = { Text("Library", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.White,
-                            selectedTextColor = Color.White,
-                            indicatorColor = RedYTMVariant,
-                            unselectedIconColor = DarkGreyText,
-                            unselectedTextColor = DarkGreyText
+                        NavigationBarItem(
+                            selected = currentScreen is ScreenState.Library,
+                            onClick = { viewModel.navigateTo(ScreenState.Library) },
+                            icon = { Icon(Icons.Default.List, contentDescription = "Library") },
+                            label = { Text("Library", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = Color.White,
+                                indicatorColor = RedYTMVariant,
+                                unselectedIconColor = DarkGreyText,
+                                unselectedTextColor = DarkGreyText
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -917,7 +919,7 @@ fun MiniPlayerBar(
             }
             IconButton(onClick = onTogglePlay) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Default.Refresh else Icons.Default.PlayArrow,
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = "Play/Pause",
                     tint = Color.White,
                     modifier = Modifier.scale(if (isPlaying) 1f else 1.2f)
@@ -1113,26 +1115,53 @@ fun FullPlayerOverlay(
 
             Spacer(modifier = Modifier.weight(0.1f))
 
-            // Text Title Labels
-            Text(
-                text = song.title,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = song.artist,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = DarkGreyText,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            // Title, artist, and Like/Add actions row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = song.title,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = song.artist,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = DarkGreyText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.toggleLikeSong(song) }) {
+                        Icon(
+                            imageVector = if (song.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Like",
+                            tint = if (song.isLiked) RedYTM else Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    IconButton(onClick = { showPlaylistChooser = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add to Playlist",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.weight(0.1f))
 
@@ -1159,23 +1188,31 @@ fun FullPlayerOverlay(
 
             Spacer(modifier = Modifier.weight(0.1f))
 
-            // Controls buttons bar
+            // Controls buttons bar (Shuffle, Prev, Play/Pause circle, Next, Repeat)
+            var shuffleActive by remember { mutableStateOf(false) }
+            var repeatActive by remember { mutableStateOf(false) }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { viewModel.toggleLikeSong(song) }) {
+                IconButton(onClick = { shuffleActive = !shuffleActive }) {
                     Icon(
-                        imageVector = if (song.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Like",
-                        tint = if (song.isLiked) RedYTM else Color.White,
-                        modifier = Modifier.size(28.dp)
+                        imageVector = Icons.Default.Shuffle,
+                        contentDescription = "Shuffle",
+                        tint = if (shuffleActive) RedYTM else Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
                 IconButton(onClick = { viewModel.playPrev() }) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(36.dp))
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Prev",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
                 }
 
                 // Primary Playpause container
@@ -1188,7 +1225,7 @@ fun FullPlayerOverlay(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Refresh else Icons.Default.PlayArrow,
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = "Play/Pause",
                             tint = Color.Black,
                             modifier = Modifier.size(36.dp)
@@ -1197,12 +1234,61 @@ fun FullPlayerOverlay(
                 }
 
                 IconButton(onClick = { viewModel.playNext() }) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(36.dp))
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
                 }
 
-                IconButton(onClick = { showPlaylistChooser = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "List append", tint = Color.White, modifier = Modifier.size(28.dp))
+                IconButton(onClick = { repeatActive = !repeatActive }) {
+                    Icon(
+                        imageVector = Icons.Default.Repeat,
+                        contentDescription = "Repeat",
+                        tint = if (repeatActive) RedYTM else Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
+            }
+
+            // Bottom Real YouTube Music style tabs indicator (UP NEXT | LYRICS | RELATED)
+            Spacer(modifier = Modifier.weight(0.1f))
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "UP NEXT",
+                    color = Color.White.copy(alpha = if (showLyricsTab) 0.5f else 1.0f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { showLyricsTab = false }
+                        .padding(8.dp)
+                )
+                Text(
+                    text = "LYRICS",
+                    color = Color.White.copy(alpha = if (showLyricsTab) 1.0f else 0.5f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { showLyricsTab = true }
+                        .padding(8.dp)
+                )
+                Text(
+                    text = "RELATED",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { /* decorative/related feature if needed */ }
+                        .padding(8.dp)
+                )
             }
 
             Spacer(modifier = Modifier.weight(0.1f))

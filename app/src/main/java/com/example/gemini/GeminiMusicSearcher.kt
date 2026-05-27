@@ -77,117 +77,86 @@ object GeminiMusicSearcher {
     )
 
     suspend fun searchSongsOnYouTube(query: String): List<Song> = withContext(Dispatchers.IO) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            // Return fallback mocked songs if key is empty
-            return@withContext getLocalFallbackSongsForQuery(query)
-        }
-
-        val prompt = """
-            You are a YouTube Music Search metadata synthesizer. Act as the search backend for a YT Music clone.
-            The user wants to search for: "$query".
-            Synthesize a JSON list containing between 3 and 6 relevant search results matching or highly relevant to "$query" (including direct titles, cover themes, or famous tracks by the same artist).
-            
-            Return ONLY a raw JSON array of objects. Do not wrap in ```json ... ``` blocks. Do not add any markdown formatting. 
-            
-            Each JSON object MUST have the following keys EXACTLY:
-            - id: A short unique alphanumeric ID (like a YT Video ID, e.g., "dQw4w9WgXcQ")
-            - title: The precise title of the song
-            - artist: The name of the artist or band
-            - album: The name of the album or "Single"
-            - durationSeconds: Estimated duration as an integer, e.g., 210
-            - category: Choose exactly one from:  "Chill", "Lofi", "Pop", "Electronic", "Dance", "Hip Hop", "R&B", "Rock", "Metal", "Acoustic", "Classical", "Cinematic"
-            - lyrics: Highly-accurate descriptive lyrics of the song (or the first 2-3 verses if long), beautifully formatted with linebreaks '\n'
-            
-            Example Format:
-            [
-              {
-                "id": "abc123yz",
-                "title": "Song Title",
-                "artist": "Artist",
-                "album": "Album Name",
-                "durationSeconds": 240,
-                "category": "Chill",
-                "lyrics": "[00:05] Intro beats...\n[00:15] Verse 1 lyrics..."
-              }
-            ]
-        """.trimIndent()
-
-        try {
-            val endpoint = "$BASE_URL?key=$apiKey"
-            val requestBodyObj = GeminiGenerateRequest(
-                contents = listOf(
-                    GeminiContent(parts = listOf(GeminiPart(text = prompt)))
-                )
-            )
-
-            val adapter = moshi.adapter(GeminiGenerateRequest::class.java)
-            val jsonRequestBody = adapter.toJson(requestBodyObj)
-
-            val request = Request.Builder()
-                .url(endpoint)
-                .post(jsonRequestBody.toRequestBody("application/json".toMediaType()))
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext getLocalFallbackSongsForQuery(query)
-                }
-
-                val responseBodyStr = response.body?.string() ?: return@withContext getLocalFallbackSongsForQuery(query)
-                val responseJson = JSONObject(responseBodyStr)
-                val candidates = responseJson.getJSONArray("candidates")
-                val textResponse = candidates.getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text")
-
-                // Clean-up formatting if model added markdown wrappers
-                var cleanedJson = textResponse.trim()
-                if (cleanedJson.startsWith("```json")) {
-                    cleanedJson = cleanedJson.substringAfter("```json")
-                }
-                if (cleanedJson.startsWith("```")) {
-                    cleanedJson = cleanedJson.substringAfter("```")
-                }
-                if (cleanedJson.endsWith("```")) {
-                    cleanedJson = cleanedJson.substringBeforeLast("```")
-                }
-                cleanedJson = cleanedJson.trim()
-
-                val jsonArray = JSONArray(cleanedJson)
-                val results = mutableListOf<Song>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    val id = obj.getString("id")
-                    val title = obj.getString("title")
-                    val artist = obj.getString("artist")
-                    val album = obj.optString("album", "YouTube Music")
-                    val duration = obj.optInt("durationSeconds", 180)
-                    val category = obj.optString("category", "Chill")
-                    val lyrics = obj.optString("lyrics", "No synchronous lyrics available.")
-
-                    results.add(
-                        Song(
-                            id = id,
-                            title = title,
-                            artist = artist,
-                            album = album,
-                            durationSeconds = duration,
-                            streamUrl = STREAM_URLS[category] ?: STREAM_URLS["Chill"]!!,
-                            coverUrl = COVER_ARTS[category] ?: COVER_ARTS["Chill"]!!,
-                            category = category,
-                            lyrics = lyrics
+        val instances = listOf(
+            "https://pipedapi.kavin.rocks",
+            "https://pipedapi.colby.land",
+            "https://piped-api.lunar.icu",
+            "https://api-piped.mha.fi"
+        )
+        
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        
+        for (baseUrl in instances) {
+            try {
+                // Search with filter=music_songs to get precise songs from YouTube Music catalog
+                val urlStr = "$baseUrl/search?q=$encodedQuery&filter=music_songs"
+                val url = java.net.URL(urlStr)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 6000
+                connection.readTimeout = 6000
+                connection.requestMethod = "GET"
+                
+                if (connection.responseCode == 200) {
+                    val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                    val itemsArray = if (responseText.trim().startsWith("{")) {
+                        val responseJson = JSONObject(responseText)
+                        if (responseJson.has("items")) {
+                            responseJson.getJSONArray("items")
+                        } else {
+                            JSONArray()
+                        }
+                    } else {
+                        JSONArray(responseText)
+                    }
+                    
+                    val results = mutableListOf<Song>()
+                    for (i in 0 until itemsArray.length()) {
+                        val item = itemsArray.getJSONObject(i)
+                        val type = item.optString("type", "")
+                        if (type != "stream" && type != "video" && type != "music_song" && type != "music_video") continue
+                        
+                        val itemUrl = item.optString("url", "")
+                        if (itemUrl.isEmpty()) continue
+                        
+                        val videoId = if (itemUrl.contains("v=")) {
+                            itemUrl.substringAfter("v=")
+                        } else {
+                            itemUrl.substringAfterLast("/")
+                        }
+                        
+                        val title = item.optString("title", "Unknown Track")
+                        val artist = item.optString("uploaderName", item.optString("author", "YouTube Artist"))
+                        val thumbnail = item.optString("thumbnail", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")
+                        val duration = item.optInt("duration", 195)
+                        
+                        val category = "Chill"
+                        val lyrics = "[00:00] Instrumentals play...\n[00:15] Enjoying $title by $artist\n[00:30] Playing live high quality audio stream from YouTube\n[00:45] [Verse 1]\n[01:05] Music flow remains perfectly active\n[01:25] [Refrain]\n[01:45] Track synchronized successfully\n[02:10] Music wraps up gracefully..."
+                        
+                        results.add(
+                            Song(
+                                id = videoId,
+                                title = title,
+                                artist = artist,
+                                album = "YouTube Single",
+                                durationSeconds = duration,
+                                streamUrl = "https://pipedapi.kavin.rocks/streams/$videoId", // Will resolve dynamically to direct stream URL
+                                coverUrl = thumbnail,
+                                category = category,
+                                lyrics = lyrics
+                            )
                         )
-                    )
+                    }
+                    if (results.isNotEmpty()) {
+                        return@withContext results
+                    }
                 }
-                return@withContext results
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return@withContext getLocalFallbackSongsForQuery(query)
         }
+        
+        // Return local fallbacks if offline or all instances fail
+        return@withContext getLocalFallbackSongsForQuery(query)
     }
 
     // High quality presets to display initially or fallback to if API is down / keys are unconfigured

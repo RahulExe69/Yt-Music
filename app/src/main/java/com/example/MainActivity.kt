@@ -18,6 +18,11 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.MusicViewModel
 
 class MainActivity : ComponentActivity() {
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -26,9 +31,6 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permission = Manifest.permission.POST_NOTIFICATIONS
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                val requestPermissionLauncher = registerForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { _ -> }
                 requestPermissionLauncher.launch(permission)
             }
         }

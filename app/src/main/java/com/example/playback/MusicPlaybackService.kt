@@ -11,6 +11,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.example.MainActivity
 import com.example.model.Song
 import kotlinx.coroutines.*
 import java.io.InputStream
@@ -18,6 +19,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONObject
 
 class MusicPlaybackService : Service() {
 
@@ -104,7 +106,7 @@ class MusicPlaybackService : Service() {
             setOnErrorListener { _, _, _ ->
                 _isPlaying.value = false
                 stopProgressTracker()
-                false
+                true
             }
         }
     }
@@ -124,20 +126,83 @@ class MusicPlaybackService : Service() {
 
         stopProgressTracker()
 
-        mediaPlayer?.let { player ->
-            try {
-                player.reset()
-                player.setDataSource(song.streamUrl)
-                player.prepareAsync() // Asynchronous preparation for online streaming
-                _isPlaying.value = false // Set temporarily to false during load
-                updateNotification()
+        serviceScope.launch {
+            var playUrl = song.streamUrl
+            
+            // Resolve direct YouTube music stream URL if song id is a YouTube video ID
+            val isYtId = song.id.length >= 8 && !song.id.startsWith("trend") && !song.id.startsWith("saved") && !song.id.startsWith("local")
+            if (isYtId) {
+                val resolvedUrl = withContext(Dispatchers.IO) {
+                    resolvePipedStreamUrl(song.id)
+                }
+                if (resolvedUrl != null) {
+                    playUrl = resolvedUrl
+                }
+            }
 
-                // Load cover art in background to show in notification
-                loadCoverBitmap(song.coverUrl)
+            mediaPlayer?.let { player ->
+                try {
+                    player.reset()
+                    player.setDataSource(playUrl)
+                    player.prepareAsync() // Asynchronous preparation for online streaming
+                    _isPlaying.value = false // Set temporarily to false during load
+                    updateNotification()
+
+                    // Load cover art in background to show in notification
+                    loadCoverBitmap(song.coverUrl)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    private suspend fun resolvePipedStreamUrl(videoId: String): String? {
+        val instances = listOf(
+            "https://pipedapi.kavin.rocks",
+            "https://pipedapi.colby.land",
+            "https://piped-api.lunar.icu",
+            "https://api-piped.mha.fi"
+        )
+        for (baseUrl in instances) {
+            try {
+                val urlStr = "$baseUrl/streams/$videoId"
+                val url = URL(urlStr)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.requestMethod = "GET"
+                
+                if (connection.responseCode == 200) {
+                    val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(responseText)
+                    if (json.has("audioStreams")) {
+                        val audioStreams = json.getJSONArray("audioStreams")
+                        if (audioStreams.length() > 0) {
+                            // Find the first audio stream, preferably M4A/MP4 or opus
+                            var bestUrl: String? = null
+                            for (i in 0 until audioStreams.length()) {
+                                val stream = audioStreams.getJSONObject(i)
+                                val streamUrl = stream.getString("url")
+                                val mime = stream.optString("mimeType", "")
+                                if (mime.contains("audio/mp4") || mime.contains("m4a")) {
+                                    return streamUrl
+                                }
+                                if (bestUrl == null) {
+                                    bestUrl = streamUrl
+                                }
+                            }
+                            if (bestUrl != null) {
+                                return bestUrl
+                            }
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
+        return null
     }
 
     fun resumePlayback() {
@@ -244,7 +309,7 @@ class MusicPlaybackService : Service() {
         val song = _currentPlayingSong.value ?: return
 
         // PendingIntent for clicking notification to open our app
-        val mainActivityIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        val mainActivityIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this, MainActivity::class.java)).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val mainActivityPendingIntent = PendingIntent.getActivity(
@@ -299,16 +364,25 @@ class MusicPlaybackService : Service() {
                 .setShowActionsInCompactView(0, 1, 2)
         )
 
-        val notification = notificationBuilder.build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            val notification = notificationBuilder.build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
     private fun stopService() {
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
         stopSelf()
         _isPlaying.value = false
         stopProgressTracker()
