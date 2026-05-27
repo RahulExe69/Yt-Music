@@ -927,7 +927,7 @@ fun MiniPlayerBar(
             }
             Spacer(modifier = Modifier.width(4.dp))
             IconButton(onClick = onNext) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "Next", tint = Color.White)
+                Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
             }
         }
     }

@@ -87,7 +87,8 @@ object GeminiMusicSearcher {
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
             connection.requestMethod = "GET"
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            connection.setRequestProperty("Accept", "application/json")
             
             if (connection.responseCode == 200) {
                 val responseText = connection.inputStream.bufferedReader().use { it.readText() }
@@ -97,7 +98,7 @@ object GeminiMusicSearcher {
                     val results = mutableListOf<Song>()
                     for (i in 0 until dataArray.length()) {
                         val track = dataArray.getJSONObject(i)
-                        val id = "dz_" + track.optLong("id", System.currentTimeMillis()).toString()
+                        val id = "dz_" + track.optString("id", i.toString())
                         val title = track.optString("title", "Unknown Track")
                         val duration = track.optInt("duration", 30)
                         val streamUrl = track.optString("preview", "")
@@ -145,11 +146,17 @@ object GeminiMusicSearcher {
 
         // 2. Try YouTube Piped instances as fallback
         val instances = listOf(
+            "https://api-piped.mha.fi",
             "https://pipedapi.kavin.rocks",
-            "https://pipedapi.colby.land",
             "https://piped-api.lunar.icu",
-            "https://api-piped.mha.fi"
-        )
+            "https://pipedapi.synack.it",
+            "https://pipedapi.oxit.ca",
+            "https://pipedapi.adminforge.de",
+            "https://pipedapi.suyu.rocks",
+            "https://pipedapi.r4fo.com",
+            "https://pipedapi.lre.yt",
+            "https://api.piped.privacydev.net"
+        ).shuffled()
         
         for (baseUrl in instances) {
             try {
@@ -160,6 +167,8 @@ object GeminiMusicSearcher {
                 connection.connectTimeout = 6000
                 connection.readTimeout = 6000
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                connection.setRequestProperty("Accept", "application/json")
                 
                 if (connection.responseCode == 200) {
                     val responseText = connection.inputStream.bufferedReader().use { it.readText() }
@@ -191,7 +200,16 @@ object GeminiMusicSearcher {
                         
                         val title = item.optString("title", "Unknown Track")
                         val artist = item.optString("uploaderName", item.optString("author", "YouTube Artist"))
-                        val thumbnail = item.optString("thumbnail", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")
+                        
+                        // Parse thumbnail with flexible fallback
+                        val thumbnail = if (item.has("thumbnail") && !item.getString("thumbnail").isNullOrEmpty()) {
+                            item.getString("thumbnail")
+                        } else if (item.has("thumbnails") && item.getJSONArray("thumbnails").length() > 0) {
+                            item.getJSONArray("thumbnails").getJSONObject(0).optString("url", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")
+                        } else {
+                            "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop"
+                        }
+                        
                         val duration = item.optInt("duration", 195)
                         
                         val category = "Chill"
@@ -204,7 +222,7 @@ object GeminiMusicSearcher {
                                 artist = artist,
                                 album = "YouTube Single",
                                 durationSeconds = duration,
-                                streamUrl = "https://pipedapi.kavin.rocks/streams/$videoId", // Will resolve dynamically to direct stream URL
+                                streamUrl = "$baseUrl/streams/$videoId",
                                 coverUrl = thumbnail,
                                 category = category,
                                 lyrics = lyrics

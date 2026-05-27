@@ -159,11 +159,17 @@ class MusicPlaybackService : Service() {
 
     private suspend fun resolvePipedStreamUrl(videoId: String): String? {
         val instances = listOf(
+            "https://api-piped.mha.fi",
             "https://pipedapi.kavin.rocks",
-            "https://pipedapi.colby.land",
             "https://piped-api.lunar.icu",
-            "https://api-piped.mha.fi"
-        )
+            "https://pipedapi.synack.it",
+            "https://pipedapi.oxit.ca",
+            "https://pipedapi.adminforge.de",
+            "https://pipedapi.suyu.rocks",
+            "https://pipedapi.r4fo.com",
+            "https://pipedapi.lre.yt",
+            "https://api.piped.privacydev.net"
+        ).shuffled()
         for (baseUrl in instances) {
             try {
                 val urlStr = "$baseUrl/streams/$videoId"
@@ -172,6 +178,8 @@ class MusicPlaybackService : Service() {
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                connection.setRequestProperty("Accept", "application/json")
                 
                 if (connection.responseCode == 200) {
                     val responseText = connection.inputStream.bufferedReader().use { it.readText() }
