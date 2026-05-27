@@ -77,14 +77,79 @@ object GeminiMusicSearcher {
     )
 
     suspend fun searchSongsOnYouTube(query: String): List<Song> = withContext(Dispatchers.IO) {
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        
+        // 1. Try Deezer Search first: High reliability, real songs, no API limits, direct MP3 preview streams
+        try {
+            val urlStr = "https://api.deezer.com/search?q=$encodedQuery"
+            val url = java.net.URL(urlStr)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            
+            if (connection.responseCode == 200) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(responseText)
+                if (json.has("data")) {
+                    val dataArray = json.getJSONArray("data")
+                    val results = mutableListOf<Song>()
+                    for (i in 0 until dataArray.length()) {
+                        val track = dataArray.getJSONObject(i)
+                        val id = "dz_" + track.optLong("id", System.currentTimeMillis()).toString()
+                        val title = track.optString("title", "Unknown Track")
+                        val duration = track.optInt("duration", 30)
+                        val streamUrl = track.optString("preview", "")
+                        
+                        if (streamUrl.isEmpty()) continue
+                        
+                        val artistObj = track.optJSONObject("artist")
+                        val artist = artistObj?.optString("name", "Unknown Artist") ?: "Unknown Artist"
+                        
+                        val albumObj = track.optJSONObject("album")
+                        val album = albumObj?.optString("title", "Single") ?: "Single"
+                        val coverUrl = albumObj?.optString("cover_medium", albumObj.optString("cover", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")) ?: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop"
+                        
+                        val category = "Chill"
+                        val lyrics = """
+                            [00:00] Instrumentals build up...
+                            [00:05] Now playing: '$title' by $artist
+                            [00:15] Enjoying this crystal clear stream from official servers
+                            [00:25] [Refrain]
+                            [00:30] Preview end - add to playlist to keep it in your library!
+                        """.trimIndent()
+                        
+                        results.add(
+                            Song(
+                                id = id,
+                                title = title,
+                                artist = artist,
+                                album = album,
+                                durationSeconds = duration,
+                                streamUrl = streamUrl,
+                                coverUrl = coverUrl,
+                                category = category,
+                                lyrics = lyrics
+                            )
+                        )
+                    }
+                    if (results.isNotEmpty()) {
+                        return@withContext results
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // 2. Try YouTube Piped instances as fallback
         val instances = listOf(
             "https://pipedapi.kavin.rocks",
             "https://pipedapi.colby.land",
             "https://piped-api.lunar.icu",
             "https://api-piped.mha.fi"
         )
-        
-        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
         
         for (baseUrl in instances) {
             try {
