@@ -20,8 +20,18 @@ import java.net.URL
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 class MusicPlaybackService : Service() {
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
 
     private var mediaPlayer: MediaPlayer? = null
     private val binder = LocalBinder()
@@ -173,35 +183,35 @@ class MusicPlaybackService : Service() {
         for (baseUrl in instances) {
             try {
                 val urlStr = "$baseUrl/streams/$videoId"
-                val url = URL(urlStr)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                connection.setRequestProperty("Accept", "application/json")
+                val request = Request.Builder()
+                    .url(urlStr)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .addHeader("Accept", "application/json")
+                    .build()
                 
-                if (connection.responseCode == 200) {
-                    val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                    val json = JSONObject(responseText)
-                    if (json.has("audioStreams")) {
-                        val audioStreams = json.getJSONArray("audioStreams")
-                        if (audioStreams.length() > 0) {
-                            // Find the first audio stream, preferably M4A/MP4 or opus
-                            var bestUrl: String? = null
-                            for (i in 0 until audioStreams.length()) {
-                                val stream = audioStreams.getJSONObject(i)
-                                val streamUrl = stream.getString("url")
-                                val mime = stream.optString("mimeType", "")
-                                if (mime.contains("audio/mp4") || mime.contains("m4a")) {
-                                    return streamUrl
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val responseText = response.body?.string() ?: ""
+                        val json = JSONObject(responseText)
+                        if (json.has("audioStreams")) {
+                            val audioStreams = json.getJSONArray("audioStreams")
+                            if (audioStreams.length() > 0) {
+                                // Find the first audio stream, preferably M4A/MP4 or opus
+                                var bestUrl: String? = null
+                                for (i in 0 until audioStreams.length()) {
+                                    val stream = audioStreams.getJSONObject(i)
+                                    val streamUrl = stream.getString("url")
+                                    val mime = stream.optString("mimeType", "")
+                                    if (mime.contains("audio/mp4") || mime.contains("m4a")) {
+                                        return streamUrl
+                                    }
+                                    if (bestUrl == null) {
+                                        bestUrl = streamUrl
+                                    }
                                 }
-                                if (bestUrl == null) {
-                                    bestUrl = streamUrl
+                                if (bestUrl != null) {
+                                    return bestUrl
                                 }
-                            }
-                            if (bestUrl != null) {
-                                return bestUrl
                             }
                         }
                     }
@@ -282,15 +292,25 @@ class MusicPlaybackService : Service() {
     private fun loadCoverBitmap(urlStr: String) {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                val url = URL(urlStr)
-                val connection: HttpURLConnection = url.openConnection() as HttpURLConnection
-                connection.doInput = true
-                connection.connect()
-                val input: InputStream = connection.inputStream
-                val bitmap = BitmapFactory.decodeStream(input)
-                withContext(Dispatchers.Main) {
-                    currentCoverBitmap = bitmap
-                    updateNotification()
+                if (urlStr.isEmpty()) return@launch
+                val request = Request.Builder()
+                    .url(urlStr)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .build()
+                
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val byteStream = response.body?.byteStream()
+                        if (byteStream != null) {
+                            val bitmap = BitmapFactory.decodeStream(byteStream)
+                            if (bitmap != null) {
+                                withContext(Dispatchers.Main) {
+                                    currentCoverBitmap = bitmap
+                                    updateNotification()
+                                }
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 currentCoverBitmap = null

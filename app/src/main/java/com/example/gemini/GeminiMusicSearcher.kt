@@ -82,61 +82,61 @@ object GeminiMusicSearcher {
         // 1. Try Deezer Search first: High reliability, real songs, no API limits, direct MP3 preview streams
         try {
             val urlStr = "https://api.deezer.com/search?q=$encodedQuery"
-            val url = java.net.URL(urlStr)
-            val connection = url.openConnection() as java.net.HttpURLConnection
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            connection.setRequestProperty("Accept", "application/json")
-            
-            if (connection.responseCode == 200) {
-                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(responseText)
-                if (json.has("data")) {
-                    val dataArray = json.getJSONArray("data")
-                    val results = mutableListOf<Song>()
-                    for (i in 0 until dataArray.length()) {
-                        val track = dataArray.getJSONObject(i)
-                        val id = "dz_" + track.optString("id", i.toString())
-                        val title = track.optString("title", "Unknown Track")
-                        val duration = track.optInt("duration", 30)
-                        val streamUrl = track.optString("preview", "")
-                        
-                        if (streamUrl.isEmpty()) continue
-                        
-                        val artistObj = track.optJSONObject("artist")
-                        val artist = artistObj?.optString("name", "Unknown Artist") ?: "Unknown Artist"
-                        
-                        val albumObj = track.optJSONObject("album")
-                        val album = albumObj?.optString("title", "Single") ?: "Single"
-                        val coverUrl = albumObj?.optString("cover_medium", albumObj.optString("cover", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")) ?: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop"
-                        
-                        val category = "Chill"
-                        val lyrics = """
-                            [00:00] Instrumentals build up...
-                            [00:05] Now playing: '$title' by $artist
-                            [00:15] Enjoying this crystal clear stream from official servers
-                            [00:25] [Refrain]
-                            [00:30] Preview end - add to playlist to keep it in your library!
-                        """.trimIndent()
-                        
-                        results.add(
-                            Song(
-                                id = id,
-                                title = title,
-                                artist = artist,
-                                album = album,
-                                durationSeconds = duration,
-                                streamUrl = streamUrl,
-                                coverUrl = coverUrl,
-                                category = category,
-                                lyrics = lyrics
+            val request = Request.Builder()
+                .url(urlStr)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .addHeader("Accept", "application/json")
+                .build()
+                
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val responseText = response.body?.string() ?: ""
+                    val json = JSONObject(responseText)
+                    if (json.has("data")) {
+                        val dataArray = json.getJSONArray("data")
+                        val results = mutableListOf<Song>()
+                        for (i in 0 until dataArray.length()) {
+                            val track = dataArray.getJSONObject(i)
+                            val id = "dz_" + track.optString("id", i.toString())
+                            val title = track.optString("title", "Unknown Track")
+                            val duration = track.optInt("duration", 30)
+                            val streamUrl = track.optString("preview", "")
+                            
+                            if (streamUrl.isEmpty()) continue
+                            
+                            val artistObj = track.optJSONObject("artist")
+                            val artist = artistObj?.optString("name", "Unknown Artist") ?: "Unknown Artist"
+                            
+                            val albumObj = track.optJSONObject("album")
+                            val album = albumObj?.optString("title", "Single") ?: "Single"
+                            val coverUrl = albumObj?.optString("cover_medium", albumObj.optString("cover", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")) ?: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop"
+                            
+                            val category = "Chill"
+                            val lyrics = """
+                                [00:00] Instrumentals build up...
+                                [00:05] Now playing: '$title' by $artist
+                                [00:15] Enjoying this crystal clear stream from official servers
+                                [00:25] [Refrain]
+                                [00:30] Preview end - add to playlist to keep it in your library!
+                            """.trimIndent()
+                            
+                            results.add(
+                                Song(
+                                    id = id,
+                                    title = title,
+                                    artist = artist,
+                                    album = album,
+                                    durationSeconds = duration,
+                                    streamUrl = streamUrl,
+                                    coverUrl = coverUrl,
+                                    category = category,
+                                    lyrics = lyrics
+                                )
                             )
-                        )
-                    }
-                    if (results.isNotEmpty()) {
-                        return@withContext results
+                        }
+                        if (results.isNotEmpty()) {
+                            return@withContext results
+                        }
                     }
                 }
             }
@@ -144,7 +144,76 @@ object GeminiMusicSearcher {
             e.printStackTrace()
         }
 
-        // 2. Try YouTube Piped instances as fallback
+        // 2. Try iTunes Search fallback: Apple global catalog, 100% uptime, direct MP3 preview streams
+        try {
+            val urlStr = "https://itunes.apple.com/search?media=music&limit=30&term=$encodedQuery"
+            val request = Request.Builder()
+                .url(urlStr)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .addHeader("Accept", "application/json")
+                .build()
+                
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val responseText = response.body?.string() ?: ""
+                    val json = JSONObject(responseText)
+                    if (json.has("results")) {
+                        val resultsArray = json.getJSONArray("results")
+                        val results = mutableListOf<Song>()
+                        for (i in 0 until resultsArray.length()) {
+                            val track = resultsArray.getJSONObject(i)
+                            val kind = track.optString("kind", "")
+                            if (kind != "song") continue
+                            
+                            val trackId = track.optLong("trackId", i.toLong()).toString()
+                            val id = "itunes_$trackId"
+                            val title = track.optString("trackName", "Unknown Track")
+                            val durationMillis = track.optInt("trackTimeMillis", 30000)
+                            val duration = durationMillis / 1000
+                            val streamUrl = track.optString("previewUrl", "")
+                            
+                            if (streamUrl.isEmpty()) continue
+                            
+                            val artist = track.optString("artistName", "Unknown Artist")
+                            val album = track.optString("collectionName", "Single")
+                            
+                            val artworkUrl100 = track.optString("artworkUrl100", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")
+                            val coverUrl = artworkUrl100.replace("100x100bb", "500x500bb") // High definition
+                            
+                            val category = track.optString("primaryGenreName", "Pop")
+                            val lyrics = """
+                                [00:00] Instrumentals build up...
+                                [00:05] Now playing: '$title' by $artist
+                                [00:15] Enjoying this crystal clear stream from iTunes servers
+                                [00:25] [Refrain]
+                                [00:30] Preview end - add to playlist to keep it in your library!
+                            """.trimIndent()
+                            
+                            results.add(
+                                Song(
+                                    id = id,
+                                    title = title,
+                                    artist = artist,
+                                    album = album,
+                                    durationSeconds = duration,
+                                    streamUrl = streamUrl,
+                                    coverUrl = coverUrl,
+                                    category = category,
+                                    lyrics = lyrics
+                                )
+                            )
+                        }
+                        if (results.isNotEmpty()) {
+                            return@withContext results
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // 3. Try YouTube Piped instances as fallback
         val instances = listOf(
             "https://api-piped.mha.fi",
             "https://pipedapi.kavin.rocks",
@@ -162,75 +231,80 @@ object GeminiMusicSearcher {
             try {
                 // Search with filter=music_songs to get precise songs from YouTube Music catalog
                 val urlStr = "$baseUrl/search?q=$encodedQuery&filter=music_songs"
-                val url = java.net.URL(urlStr)
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 6000
-                connection.readTimeout = 6000
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                connection.setRequestProperty("Accept", "application/json")
+                val request = Request.Builder()
+                    .url(urlStr)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .addHeader("Accept", "application/json")
+                    .build()
                 
-                if (connection.responseCode == 200) {
-                    val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                    val itemsArray = if (responseText.trim().startsWith("{")) {
-                        val responseJson = JSONObject(responseText)
-                        if (responseJson.has("items")) {
-                            responseJson.getJSONArray("items")
+                val quickClient = client.newBuilder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .build()
+                
+                quickClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val responseText = response.body?.string() ?: ""
+                        val itemsArray = if (responseText.trim().startsWith("{")) {
+                            val responseJson = JSONObject(responseText)
+                            if (responseJson.has("items")) {
+                                responseJson.getJSONArray("items")
+                            } else {
+                                JSONArray()
+                            }
                         } else {
-                            JSONArray()
-                        }
-                    } else {
-                        JSONArray(responseText)
-                    }
-                    
-                    val results = mutableListOf<Song>()
-                    for (i in 0 until itemsArray.length()) {
-                        val item = itemsArray.getJSONObject(i)
-                        val type = item.optString("type", "")
-                        if (type != "stream" && type != "video" && type != "music_song" && type != "music_video") continue
-                        
-                        val itemUrl = item.optString("url", "")
-                        if (itemUrl.isEmpty()) continue
-                        
-                        val videoId = if (itemUrl.contains("v=")) {
-                            itemUrl.substringAfter("v=")
-                        } else {
-                            itemUrl.substringAfterLast("/")
+                            JSONArray(responseText)
                         }
                         
-                        val title = item.optString("title", "Unknown Track")
-                        val artist = item.optString("uploaderName", item.optString("author", "YouTube Artist"))
-                        
-                        // Parse thumbnail with flexible fallback
-                        val thumbnail = if (item.has("thumbnail") && !item.getString("thumbnail").isNullOrEmpty()) {
-                            item.getString("thumbnail")
-                        } else if (item.has("thumbnails") && item.getJSONArray("thumbnails").length() > 0) {
-                            item.getJSONArray("thumbnails").getJSONObject(0).optString("url", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")
-                        } else {
-                            "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop"
-                        }
-                        
-                        val duration = item.optInt("duration", 195)
-                        
-                        val category = "Chill"
-                        val lyrics = "[00:00] Instrumentals play...\n[00:15] Enjoying $title by $artist\n[00:30] Playing live high quality audio stream from YouTube\n[00:45] [Verse 1]\n[01:05] Music flow remains perfectly active\n[01:25] [Refrain]\n[01:45] Track synchronized successfully\n[02:10] Music wraps up gracefully..."
-                        
-                        results.add(
-                            Song(
-                                id = videoId,
-                                title = title,
-                                artist = artist,
-                                album = "YouTube Single",
-                                durationSeconds = duration,
-                                streamUrl = "$baseUrl/streams/$videoId",
-                                coverUrl = thumbnail,
-                                category = category,
-                                lyrics = lyrics
+                        val results = mutableListOf<Song>()
+                        for (i in 0 until itemsArray.length()) {
+                            val item = itemsArray.getJSONObject(i)
+                            val type = item.optString("type", "")
+                            if (type != "stream" && type != "video" && type != "music_song" && type != "music_video") continue
+                            
+                            val itemUrl = item.optString("url", "")
+                            if (itemUrl.isEmpty()) continue
+                            
+                            val videoId = if (itemUrl.contains("v=")) {
+                                itemUrl.substringAfter("v=")
+                            } else {
+                                itemUrl.substringAfterLast("/")
+                            }
+                            
+                            val title = item.optString("title", "Unknown Track")
+                            val artist = item.optString("uploaderName", item.optString("author", "YouTube Artist"))
+                            
+                            // Parse thumbnail with flexible fallback
+                            val thumbnail = if (item.has("thumbnail") && !item.getString("thumbnail").isNullOrEmpty()) {
+                                item.getString("thumbnail")
+                            } else if (item.has("thumbnails") && item.getJSONArray("thumbnails").length() > 0) {
+                                item.getJSONArray("thumbnails").getJSONObject(0).optString("url", "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop")
+                            } else {
+                                "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&q=80&fit=crop"
+                            }
+                            
+                            val duration = item.optInt("duration", 195)
+                            
+                            val category = "Chill"
+                            val lyrics = "[00:00] Instrumentals play...\n[00:15] Enjoying $title by $artist\n[00:30] Playing live high quality audio stream from YouTube\n[00:45] [Verse 1]\n[01:05] Music flow remains perfectly active\n[01:25] [Refrain]\n[01:45] Track synchronized successfully\n[02:10] Music wraps up gracefully..."
+                            
+                            results.add(
+                                Song(
+                                    id = videoId,
+                                    title = title,
+                                    artist = artist,
+                                    album = "YouTube Single",
+                                    durationSeconds = duration,
+                                    streamUrl = "$baseUrl/streams/$videoId",
+                                    coverUrl = thumbnail,
+                                    category = category,
+                                    lyrics = lyrics
+                                )
                             )
-                        )
-                    }
-                    if (results.isNotEmpty()) {
-                        return@withContext results
+                        }
+                        if (results.isNotEmpty()) {
+                            return@withContext results
+                        }
                     }
                 }
             } catch (e: Exception) {
